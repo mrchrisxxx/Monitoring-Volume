@@ -1,7 +1,7 @@
 const REFRESH_INTERVAL_SECONDS = 60;
 const RING_CIRCUMFERENCE = 326.73;
 
-const REKU_MARKETS_URL = "https://reku.id/markets";
+const REKU_API_URL = "https://api.reku.id/v3/market";
 const INDODAX_TICKERS_URL = "https://indodax.com/api/tickers";
 const TOKOCRYPTO_TICKERS_URL = "https://www.tokocrypto.site/api/v3/ticker/24hr";
 
@@ -197,8 +197,83 @@ function parseRekuMarketsPage(html) {
 }
 
 async function getRekuTopRows() {
-  const html = await fetchText(REKU_MARKETS_URL);
-  return parseRekuMarketsPage(html);
+
+  console.log("Fetching Reku API v3...");
+
+  const response = await fetch(REKU_API_URL);
+
+  const json = await response.json();
+
+  console.log(json);
+
+  // Cari array market
+  const markets =
+    json.data ||
+    json.result ||
+    json.markets ||
+    json ||
+    [];
+
+  if (!Array.isArray(markets)) {
+    console.error(
+      "Invalid Reku API structure"
+    );
+
+    return fallbackRows;
+  }
+
+  return markets
+
+    .filter((item) => {
+
+      const symbol =
+        item.symbol ||
+        item.pair ||
+        item.code ||
+        "";
+
+      return symbol.includes("IDR");
+    })
+
+    .map((item) => {
+
+      const symbol =
+        item.symbol ||
+        item.pair ||
+        item.code ||
+        "";
+
+      return {
+
+        asset:
+          symbol
+            .replace("_IDR", "")
+            .replace("IDR", ""),
+
+        name:
+          item.name ||
+          symbol,
+
+        image:
+          item.logo ||
+          item.image ||
+          item.icon ||
+          "",
+
+        reku: toBillions(
+          item.volume_idr ||
+          item.vol_idr ||
+          item.volume ||
+          0
+        ),
+      };
+    })
+
+    .sort(
+      (a, b) => b.reku - a.reku
+    )
+
+    .slice(0, 10);
 }
 
 async function getIndodaxVolumes(assets) {
