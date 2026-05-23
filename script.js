@@ -1,72 +1,66 @@
 const REFRESH_INTERVAL_SECONDS = 60;
 const RING_CIRCUMFERENCE = 326.73;
 
+const REKU_MARKETS_URL = "https://reku.id/markets";
+const INDODAX_TICKERS_URL = "https://indodax.com/api/tickers";
+const TOKOCRYPTO_TICKERS_URL =
+  "https://www.tokocrypto.site/api/v3/ticker/24hr";
+
+let currentRows = [];
 let countdown = REFRESH_INTERVAL_SECONDS;
-let currentData = [];
+let refreshTimerId = null;
 
 const elements = {
-  tableBody: document.querySelector("#volume-table-body"),
+  body: document.querySelector("#volume-table-body"),
   countdown: document.querySelector("#countdown"),
-  ringProgress: document.querySelector(".ring-progress"),
-  loadingState: document.querySelector("#refresh-status"),
-  refreshButton: document.querySelector("#manual-refresh"),
+  ring: document.querySelector("#ring-progress"),
+  status: document.querySelector("#refresh-status"),
+  sourceStatus: document.querySelector("#source-status"),
+  manualRefresh: document.querySelector("#manual-refresh"),
+  tableCard: document.querySelector(".table-card"),
 
-  refreshTimes: {
+  lastRefresh: {
     indodax: document.querySelector("#last-refresh-indodax"),
     reku: document.querySelector("#last-refresh-reku"),
     tokocrypto: document.querySelector("#last-refresh-tokocrypto"),
   },
 
   summary: {
-    total: document.querySelector("#summary-reku-volume"),
+    rekuVolume: document.querySelector("#summary-reku-volume"),
     increase: document.querySelector("#summary-increase"),
     reduce: document.querySelector("#summary-reduce"),
     maintain: document.querySelector("#summary-maintain"),
   },
 };
 
-function formatVolume(value) {
-  return `${Number(value).toFixed(2)} b`;
-}
-
-function formatTime(date = new Date()) {
-  return `${new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(date)} WIB`;
-}
-
-function getActionClass(action) {
-  return `action-${action.toLowerCase()}`;
-}
-
 function calculateAction(indodax, reku, tokocrypto) {
 
-  const x = indodax;
-  const y = tokocrypto;
-  const z = reku;
+  const x = Number(indodax || 0);
+  const y = Number(tokocrypto || 0);
+  const z = Number(reku || 0);
 
   const d = x - y;
   const absd = Math.abs(d);
 
   const betaPos =
-    0.7 + (1 - 0.7) *
-    (1 / (1 + Math.exp(-0.015 * (d - 350))));
+    0.7 +
+    (1 - 0.7) *
+      (1 / (1 + Math.exp(-0.015 * (d - 350))));
 
   const alphaPos =
     0.007 *
-    (1 - 1 / (1 + Math.exp(-0.015 * (d - 350))));
+    (1 -
+      1 / (1 + Math.exp(-0.015 * (d - 350))));
 
   const betaNeg =
     0.007 *
-    (1 - 1 / (1 + Math.exp(0.1 * (d + 150))));
+    (1 -
+      1 / (1 + Math.exp(0.1 * (d + 150))));
 
   const alphaNeg =
-    0.7 + (0.9 - 0.7) *
-    (1 / (1 + Math.exp(0.1 * (d + 150))));
+    0.7 +
+    (0.9 - 0.7) *
+      (1 / (1 + Math.exp(0.1 * (d + 150))));
 
   const upperPos = x - betaPos * absd;
   const lowerPos = y - alphaPos * absd;
@@ -101,417 +95,501 @@ function calculateAction(indodax, reku, tokocrypto) {
   return "Maintain";
 }
 
-async function fetchRekuData() {
+function formatVolume(value) {
 
-  try {
-
-    const response = await fetch(
-      "https://api.reku.id/v2/price"
-    );
-
-    const data = await response.json();
-
-    return data
-      .map((coin) => ({
-
-        asset:
-          coin.cd?.toUpperCase(),
-
-        reku:
-          Number(coin.v || 0) /
-          1000000000000,
-
-      }))
-      .filter(
-        (coin) =>
-          coin.asset &&
-          coin.reku > 0
-      );
-
-  } catch (error) {
-
-    console.error(
-      "Reku Error:",
-      error
-    );
-
-    return [];
-  }
+  return `${Number(value || 0).toFixed(2)} b`;
 }
 
-async function fetchIndodaxData() {
+function formatTime(date = new Date()) {
 
-  try {
-
-    const proxyUrl =
-      "https://api.allorigins.win/raw?url=";
-
-    const targetUrl =
-      encodeURIComponent(
-        "https://indodax.com/api/summaries"
-      );
-
-    const response =
-      await fetch(
-        proxyUrl + targetUrl
-      );
-
-    const data =
-      await response.json();
-
-    const tickers =
-      data.tickers || {};
-
-    return Object.entries(tickers)
-      .filter(([pair]) =>
-        pair.endsWith("_idr")
-      )
-      .map(([pair, value]) => ({
-
-        asset:
-          pair
-            .replace("_idr", "")
-            .toUpperCase(),
-
-        indodax:
-          Number(
-            value.vol_idr || 0
-          ) /
-          1000000000,
-
-      }));
-
-  } catch (error) {
-
-    console.error(
-      "Indodax Error:",
-      error
-    );
-
-    return [];
-  }
+  return `${new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date)} WIB`;
 }
 
-async function fetchTokocryptoData() {
+function formatServerTime(seconds) {
 
-  try {
-
-    const proxyUrl =
-      "https://api.allorigins.win/raw?url=";
-
-    const targetUrl =
-      encodeURIComponent(
-        "https://www.tokocrypto.com/open/v1/market/tickers"
-      );
-
-    const response =
-      await fetch(
-        proxyUrl + targetUrl
-      );
-
-    const json =
-      await response.json();
-
-    const list =
-      json.data || [];
-
-    return list
-      .filter((item) =>
-        item.symbol?.endsWith("_idr")
-      )
-      .map((item) => ({
-
-        asset:
-          item.symbol
-            .replace("_idr", "")
-            .toUpperCase(),
-
-        tokocrypto:
-          Number(
-            item.quote_volume || 0
-          ) /
-          1000000000,
-
-      }));
-
-  } catch (error) {
-
-    console.error(
-      "Tokocrypto Error:",
-      error
-    );
-
-    return [];
-  }
+  return seconds
+    ? formatTime(new Date(Number(seconds) * 1000))
+    : formatTime();
 }
 
-function mergeMarketData(
-  rekuData,
-  indodaxData,
-  tokocryptoData
-) {
+function formatServerTimeMs(milliseconds) {
 
-  return rekuData.map(
-    (rekuCoin) => {
+  return milliseconds
+    ? formatTime(new Date(Number(milliseconds)))
+    : formatTime();
+}
 
-      const indoMatch =
-        indodaxData.find(
-          (item) =>
-            item.asset ===
-            rekuCoin.asset
-        );
+function toBillions(value) {
 
-      const tokoMatch =
-        tokocryptoData.find(
-          (item) =>
-            item.asset ===
-            rekuCoin.asset
-        );
+  return Number(value || 0) / 1_000_000;
+}
 
-      return {
+function setLoading(isLoading, message = "") {
 
-        asset:
-          rekuCoin.asset,
+  elements.status.textContent =
+    isLoading ? "Updating" : "Live";
 
-        reku:
-          rekuCoin.reku || 0,
+  elements.sourceStatus.textContent =
+    message;
 
-        indodax:
-          indoMatch?.indodax || 0,
-
-        tokocrypto:
-          tokoMatch?.tokocrypto || 0,
-      };
-    }
+  elements.tableCard.classList.toggle(
+    "is-loading",
+    isLoading
   );
+
+  elements.manualRefresh.disabled =
+    isLoading;
 }
 
-function renderSummary(data) {
-
-  const total =
-    data.reduce(
-      (sum, item) =>
-        sum + item.reku,
-      0
-    );
-
-  let increase = 0;
-  let reduce = 0;
-  let maintain = 0;
-
-  data.forEach((item) => {
-
-    const action =
-      calculateAction(
-        item.indodax,
-        item.reku,
-        item.tokocrypto
-      );
-
-    if (action === "Increase")
-      increase++;
-
-    if (action === "Reduce")
-      reduce++;
-
-    if (action === "Maintain")
-      maintain++;
-  });
-
-  elements.summary.total.textContent =
-    formatVolume(total);
-
-  elements.summary.increase.textContent =
-    `${increase} assets`;
-
-  elements.summary.reduce.textContent =
-    `${reduce} assets`;
-
-  elements.summary.maintain.textContent =
-    `${maintain} assets`;
-}
-
-function renderTable(data) {
-
-  const rows =
-    data.map((item) => {
-
-      const action =
-        calculateAction(
-          item.indodax,
-          item.reku,
-          item.tokocrypto
-        );
-
-      return `
-        <tr>
-
-          <td>
-            <span class="asset-cell">
-              <span class="asset-icon">
-                ${item.asset.slice(0, 2)}
-              </span>
-
-              ${item.asset}
-            </span>
-          </td>
-
-          <td>
-            ${formatVolume(item.indodax)}
-          </td>
-
-          <td>
-            ${formatVolume(item.reku)}
-          </td>
-
-          <td>
-            ${formatVolume(item.tokocrypto)}
-          </td>
-
-          <td>
-            <span class="
-              action-badge
-              ${getActionClass(action)}
-            ">
-              ${action}
-            </span>
-          </td>
-
-        </tr>
-      `;
-    }).join("");
-
-  elements.tableBody.innerHTML =
-    rows;
-}
-
-function renderRefreshTimes() {
-
-  const now =
-    formatTime();
-
-  elements.refreshTimes.indodax.textContent =
-    now;
-
-  elements.refreshTimes.reku.textContent =
-    now;
-
-  elements.refreshTimes.tokocrypto.textContent =
-    now;
-}
-
-function updateCountdownVisual() {
+function renderCountdown() {
 
   elements.countdown.textContent =
     countdown;
 
-  const progressRatio =
-    countdown /
-    REFRESH_INTERVAL_SECONDS;
-
-  elements.ringProgress.style.strokeDashoffset =
+  elements.ring.style.strokeDashoffset =
     RING_CIRCUMFERENCE *
-    (1 - progressRatio);
+    (1 -
+      countdown /
+        REFRESH_INTERVAL_SECONDS);
+}
+
+function getSortedRows(rows) {
+
+  return [...rows]
+    .sort((a, b) => b.reku - a.reku)
+    .slice(0, 10);
+}
+
+function renderTable(rows) {
+
+  const sortedRows =
+    getSortedRows(rows);
+
+  elements.body.innerHTML =
+    sortedRows
+      .map((row) => {
+
+        const action =
+          calculateAction(
+            row.indodax,
+            row.reku,
+            row.tokocrypto
+          );
+
+        const badgeClass =
+          `badge-${action.toLowerCase()}`;
+
+        return `
+          <tr>
+            <td>
+              <span class="asset-cell">
+                <span class="asset-icon">
+                  ${row.asset.slice(0, 2)}
+                </span>
+                ${row.asset}
+              </span>
+            </td>
+
+            <td>
+              ${formatVolume(row.indodax)}
+            </td>
+
+            <td>
+              ${formatVolume(row.reku)}
+            </td>
+
+            <td>
+              ${formatVolume(row.tokocrypto)}
+            </td>
+
+            <td>
+              <span class="badge ${badgeClass}">
+                ${action}
+              </span>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+
+  renderSummary(sortedRows);
+}
+
+function renderSummary(rows) {
+
+  const actions =
+    rows.map((row) =>
+      calculateAction(
+        row.indodax,
+        row.reku,
+        row.tokocrypto
+      )
+    );
+
+  const totalReku =
+    rows.reduce(
+      (total, row) =>
+        total + row.reku,
+      0
+    );
+
+  elements.summary.rekuVolume.textContent =
+    formatVolume(totalReku);
+
+  elements.summary.increase.textContent =
+    `${
+      actions.filter(
+        (action) =>
+          action === "Increase"
+      ).length
+    } assets`;
+
+  elements.summary.reduce.textContent =
+    `${
+      actions.filter(
+        (action) =>
+          action === "Reduce"
+      ).length
+    } assets`;
+
+  elements.summary.maintain.textContent =
+    `${
+      actions.filter(
+        (action) =>
+          action === "Maintain"
+      ).length
+    } assets`;
+}
+
+async function fetchJson(url) {
+
+  const response = await fetch(
+    `${url}?t=${Date.now()}`,
+    {
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+
+    throw new Error(
+      `Request failed: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+async function fetchText(url) {
+
+  const response = await fetch(
+    `${url}?t=${Date.now()}`,
+    {
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+
+    throw new Error(
+      `Request failed: ${response.status}`
+    );
+  }
+
+  return response.text();
+}
+
+function parseRekuMarketsPage(html) {
+
+  const marker =
+    '<script id="__NEXT_DATA__" type="application/json">';
+
+  const start =
+    html.indexOf(marker);
+
+  if (start < 0) {
+
+    throw new Error(
+      "Reku market JSON not found"
+    );
+  }
+
+  const jsonStart =
+    start + marker.length;
+
+  const jsonEnd =
+    html.indexOf(
+      "</script>",
+      jsonStart
+    );
+
+  const json =
+    JSON.parse(
+      html.slice(jsonStart, jsonEnd)
+    );
+
+  const markets =
+    json?.props?.pageProps
+      ?.initialState?.markets
+      ?.markets || [];
+
+  return markets
+    .filter(
+      (item) =>
+        item?.code &&
+        item?.price?.volume > 0
+    )
+    .map((item) => ({
+      asset:
+        item.code.toUpperCase(),
+
+      name: item.name,
+
+      reku:
+        toBillions(
+          item.price.volume
+        ),
+    }))
+    .sort((a, b) => b.reku - a.reku)
+    .slice(0, 10);
+}
+
+async function getRekuTopRows() {
+
+  const html =
+    await fetchText(
+      REKU_MARKETS_URL
+    );
+
+  return parseRekuMarketsPage(html);
+}
+
+async function getIndodaxVolumes(
+  assets
+) {
+
+  const data =
+    await fetchJson(
+      INDODAX_TICKERS_URL
+    );
+
+  const tickers =
+    data?.tickers || {};
+
+  const serverTime =
+    Object.values(tickers)[0]
+      ?.server_time;
+
+  return {
+
+    refreshedAt:
+      formatServerTime(serverTime),
+
+    volumes:
+      Object.fromEntries(
+
+        assets.map((asset) => {
+
+          const ticker =
+            tickers[
+              `${asset.toLowerCase()}_idr`
+            ];
+
+          return [
+            asset,
+
+            toBillions(
+              ticker?.vol_idr
+            ),
+          ];
+        })
+      ),
+  };
+}
+
+async function getTokocryptoVolumes(
+  assets
+) {
+
+  const data =
+    await fetchJson(
+      TOKOCRYPTO_TICKERS_URL
+    );
+
+  const rows =
+    Array.isArray(data)
+      ? data
+      : data?.value || [];
+
+  const bySymbol =
+    new Map(
+      rows.map((item) => [
+        item.symbol,
+        item,
+      ])
+    );
+
+  const firstIdrTicker =
+    rows.find((item) =>
+      item.symbol?.endsWith("IDR")
+    );
+
+  return {
+
+    refreshedAt:
+      formatServerTimeMs(
+        firstIdrTicker?.closeTime
+      ),
+
+    volumes:
+      Object.fromEntries(
+
+        assets.map((asset) => {
+
+          const ticker =
+            bySymbol.get(
+              `${asset}IDR`
+            );
+
+          return [
+            asset,
+
+            toBillions(
+              ticker?.quoteVolume
+            ),
+          ];
+        })
+      ),
+  };
+}
+
+function mergeRows(
+  rekuRows,
+  indodaxVolumes,
+  tokocryptoVolumes
+) {
+
+  return rekuRows.map((row) => ({
+    ...row,
+
+    indodax:
+      indodaxVolumes[
+        row.asset
+      ] ?? 0,
+
+    tokocrypto:
+      tokocryptoVolumes[
+        row.asset
+      ] ?? 0,
+  }));
 }
 
 async function refreshDashboard() {
 
+  setLoading(
+    true,
+    "Fetching live exchange data"
+  );
+
   try {
 
-    elements.loadingState.textContent =
-      "Updating";
+    const rekuRows =
+      await getRekuTopRows();
 
-    const [
-      rekuData,
-      indodaxData,
-      tokocryptoData
-    ] = await Promise.all([
-
-      fetchRekuData(),
-
-      fetchIndodaxData(),
-
-      fetchTokocryptoData(),
-
-    ]);
-
-    const merged =
-      mergeMarketData(
-        rekuData,
-        indodaxData,
-        tokocryptoData
+    const assets =
+      rekuRows.map(
+        (row) => row.asset
       );
 
-    const top10 =
-      merged
-        .sort(
-          (a, b) =>
-            b.reku - a.reku
-        )
-        .slice(0, 10);
+    const [
+      indodaxResult,
+      tokocryptoResult,
+    ] = await Promise.all([
+      getIndodaxVolumes(assets),
+      getTokocryptoVolumes(assets),
+    ]);
 
-    currentData =
-      top10;
+    currentRows =
+      mergeRows(
+        rekuRows,
+        indodaxResult.volumes,
+        tokocryptoResult.volumes
+      );
 
-    renderTable(top10);
+    renderTable(currentRows);
 
-    renderSummary(top10);
+    elements.lastRefresh.reku.textContent =
+      formatTime();
 
-    renderRefreshTimes();
+    elements.lastRefresh.indodax.textContent =
+      indodaxResult.refreshedAt;
 
-    elements.loadingState.textContent =
-      `Live • ${top10.length} assets`;
+    elements.lastRefresh.tokocrypto.textContent =
+      tokocryptoResult.refreshedAt;
+
+    setLoading(
+      false,
+      "Live top 10 volume updated"
+    );
 
   } catch (error) {
 
     console.error(error);
 
-    elements.loadingState.textContent =
-      "API Error";
+    setLoading(
+      false,
+      "Failed fetching live data"
+    );
   }
+
+  countdown =
+    REFRESH_INTERVAL_SECONDS;
+
+  renderCountdown();
 }
 
-function startAutoRefresh() {
+function startCountdown() {
 
-  setInterval(async () => {
-
-    countdown--;
-
-    if (
-      countdown <= 0
-    ) {
-
-      countdown =
-        REFRESH_INTERVAL_SECONDS;
-
-      await refreshDashboard();
-    }
-
-    updateCountdownVisual();
-
-  }, 1000);
-}
-
-async function initDashboard() {
-
-  await refreshDashboard();
-
-  updateCountdownVisual();
-
-  startAutoRefresh();
-
-  elements.refreshButton.addEventListener(
-    "click",
-    async () => {
-
-      countdown =
-        REFRESH_INTERVAL_SECONDS;
-
-      updateCountdownVisual();
-
-      await refreshDashboard();
-    }
+  window.clearInterval(
+    refreshTimerId
   );
+
+  refreshTimerId =
+    window.setInterval(() => {
+
+      countdown--;
+
+      if (countdown <= 0) {
+
+        refreshDashboard();
+
+        return;
+      }
+
+      renderCountdown();
+
+    }, 1000);
+}
+
+function initDashboard() {
+
+  renderCountdown();
+
+  startCountdown();
+
+  refreshDashboard();
+
+  elements.manualRefresh
+    .addEventListener(
+      "click",
+      refreshDashboard
+    );
 }
 
 document.addEventListener(
