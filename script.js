@@ -187,63 +187,34 @@ async function fetchTokocryptoData() {
 
   try {
 
-    const symbolsResponse = await fetch(
-      "https://corsproxy.io/?https://www.tokocrypto.com/open/v1/common/symbols"
+    const response = await fetch(
+      "https://corsproxy.io/?https://www.tokocrypto.com/open/v1/market/tickers"
     );
 
-    const symbolsJson =
-      await symbolsResponse.json();
+    const json =
+      await response.json();
 
-    const symbols =
-      symbolsJson.data?.list || [];
+    const list =
+      json.data || [];
 
-    const idrPairs =
-      symbols.filter(
-        (item) =>
-          item.quoteAsset === "IDR"
-      );
+    return list
+      .filter((item) =>
+        item.symbol?.endsWith("_idr")
+      )
+      .map((item) => ({
 
-    const tickerPromises =
-      idrPairs.map(async (item) => {
+        asset:
+          item.symbol
+            .replace("_idr", "")
+            .toUpperCase(),
 
-        try {
+        tokocrypto:
+          Number(
+            item.quote_volume || 0
+          ) /
+          1000000000,
 
-          const tickerResponse =
-            await fetch(
-              `https://corsproxy.io/?https://www.tokocrypto.com/open/v1/ticker/24hr?symbol=${item.symbol}`
-            );
-
-          const tickerJson =
-            await tickerResponse.json();
-
-          const ticker =
-            tickerJson.data || {};
-
-          return {
-
-            asset:
-              item.baseAsset
-                .toUpperCase(),
-
-            tokocrypto:
-              Number(
-                ticker.quoteVolume || 0
-              ) /
-              1000000000,
-          };
-
-        } catch {
-
-          return null;
-        }
-      });
-
-    const results =
-      await Promise.all(
-        tickerPromises
-      );
-
-    return results.filter(Boolean);
+      }));
 
   } catch (error) {
 
