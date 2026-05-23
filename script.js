@@ -117,7 +117,7 @@ async function fetchRekuData() {
         asset:
           coin.cd?.toUpperCase(),
 
-        // FIX FINAL REKU
+        // FINAL FIX REKU
         reku:
           Number(coin.v || 0) /
           1000000000000,
@@ -187,34 +187,63 @@ async function fetchTokocryptoData() {
 
   try {
 
-    const response = await fetch(
-      "https://corsproxy.io/?https://www.tokocrypto.com/open/v1/market/tickers"
+    const symbolsResponse = await fetch(
+      "https://corsproxy.io/?https://www.tokocrypto.com/open/v1/common/symbols"
     );
 
-    const json =
-      await response.json();
+    const symbolsJson =
+      await symbolsResponse.json();
 
-    const list =
-      json.data || [];
+    const symbols =
+      symbolsJson.data?.list || [];
 
-    return list
-      .filter((item) =>
-        item.symbol?.endsWith("_IDR")
-      )
-      .map((item) => ({
+    const idrPairs =
+      symbols.filter(
+        (item) =>
+          item.quoteAsset === "IDR"
+      );
 
-        asset:
-          item.symbol
-            .replace("_IDR", "")
-            .toUpperCase(),
+    const tickerPromises =
+      idrPairs.map(async (item) => {
 
-        tokocrypto:
-          Number(
-            item.quoteVolume || 0
-          ) /
-          1000000000,
+        try {
 
-      }));
+          const tickerResponse =
+            await fetch(
+              `https://corsproxy.io/?https://www.tokocrypto.com/open/v1/ticker/24hr?symbol=${item.symbol}`
+            );
+
+          const tickerJson =
+            await tickerResponse.json();
+
+          const ticker =
+            tickerJson.data || {};
+
+          return {
+
+            asset:
+              item.baseAsset
+                .toUpperCase(),
+
+            tokocrypto:
+              Number(
+                ticker.quoteVolume || 0
+              ) /
+              1000000000,
+          };
+
+        } catch {
+
+          return null;
+        }
+      });
+
+    const results =
+      await Promise.all(
+        tickerPromises
+      );
+
+    return results.filter(Boolean);
 
   } catch (error) {
 
