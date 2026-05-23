@@ -120,7 +120,7 @@ async function fetchRekuData() {
         // FIX FINAL REKU
         reku:
           Number(coin.v || 0) /
-          1000000000000,
+          1000000,
 
       }))
       .filter(
@@ -188,7 +188,7 @@ async function fetchTokocryptoData() {
   try {
 
     const response = await fetch(
-      "https://corsproxy.io/?https://www.tokocrypto.com/open/v1/ticker/24hr"
+      "https://corsproxy.io/?https://www.tokocrypto.com/open/v1/market/tickers"
     );
 
     const json =
@@ -199,13 +199,13 @@ async function fetchTokocryptoData() {
 
     return list
       .filter((item) =>
-        item.symbol?.endsWith("IDR")
+        item.symbol?.endsWith("_IDR")
       )
       .map((item) => ({
 
         asset:
           item.symbol
-            .replace("IDR", "")
+            .replace("_IDR", "")
             .toUpperCase(),
 
         tokocrypto:
