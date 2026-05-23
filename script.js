@@ -117,7 +117,6 @@ async function fetchRekuData() {
         asset:
           coin.cd?.toUpperCase(),
 
-        // FINAL FIX REKU
         reku:
           Number(coin.v || 0) /
           1000000000000,
@@ -144,11 +143,21 @@ async function fetchIndodaxData() {
 
   try {
 
-    const response = await fetch(
-      "https://corsproxy.io/?https://indodax.com/api/summaries"
-    );
+    const proxyUrl =
+      "https://api.allorigins.win/raw?url=";
 
-    const data = await response.json();
+    const targetUrl =
+      encodeURIComponent(
+        "https://indodax.com/api/summaries"
+      );
+
+    const response =
+      await fetch(
+        proxyUrl + targetUrl
+      );
+
+    const data =
+      await response.json();
 
     const tickers =
       data.tickers || {};
@@ -187,9 +196,18 @@ async function fetchTokocryptoData() {
 
   try {
 
-    const response = await fetch(
-      "https://corsproxy.io/?https://www.tokocrypto.com/open/v1/market/tickers"
-    );
+    const proxyUrl =
+      "https://api.allorigins.win/raw?url=";
+
+    const targetUrl =
+      encodeURIComponent(
+        "https://www.tokocrypto.com/open/v1/market/tickers"
+      );
+
+    const response =
+      await fetch(
+        proxyUrl + targetUrl
+      );
 
     const json =
       await response.json();
@@ -290,19 +308,13 @@ function renderSummary(data) {
         item.tokocrypto
       );
 
-    if (
-      action === "Increase"
-    )
+    if (action === "Increase")
       increase++;
 
-    if (
-      action === "Reduce"
-    )
+    if (action === "Reduce")
       reduce++;
 
-    if (
-      action === "Maintain"
-    )
+    if (action === "Maintain")
       maintain++;
   });
 
@@ -336,13 +348,11 @@ function renderTable(data) {
 
           <td>
             <span class="asset-cell">
-
               <span class="asset-icon">
                 ${item.asset.slice(0, 2)}
               </span>
 
               ${item.asset}
-
             </span>
           </td>
 
@@ -359,16 +369,12 @@ function renderTable(data) {
           </td>
 
           <td>
-
             <span class="
               action-badge
               ${getActionClass(action)}
             ">
-
               ${action}
-
             </span>
-
           </td>
 
         </tr>
@@ -454,7 +460,7 @@ async function refreshDashboard() {
     renderRefreshTimes();
 
     elements.loadingState.textContent =
-      "Live";
+      `Live • ${top10.length} assets`;
 
   } catch (error) {
 
@@ -467,7 +473,7 @@ async function refreshDashboard() {
 
 function startAutoRefresh() {
 
-  setInterval(() => {
+  setInterval(async () => {
 
     countdown--;
 
@@ -478,7 +484,7 @@ function startAutoRefresh() {
       countdown =
         REFRESH_INTERVAL_SECONDS;
 
-      refreshDashboard();
+      await refreshDashboard();
     }
 
     updateCountdownVisual();
