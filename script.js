@@ -111,18 +111,16 @@ async function fetchRekuData() {
 
     const data = await response.json();
 
-    console.log("REKU RAW:", data[0]);
-
     return data
       .map((coin) => ({
 
         asset:
           coin.cd?.toUpperCase(),
 
-        // FIX FINAL
+        // FIX FINAL REKU
         reku:
           Number(coin.v || 0) /
-          1000000000000,
+          1000000000,
 
       }))
       .filter(
@@ -147,15 +145,10 @@ async function fetchIndodaxData() {
   try {
 
     const response = await fetch(
-      "https://indodax.com/api/summaries"
+      "https://corsproxy.io/?https://indodax.com/api/summaries"
     );
 
     const data = await response.json();
-
-    console.log(
-      "INDODAX RAW:",
-      data
-    );
 
     const tickers =
       data.tickers || {};
@@ -195,16 +188,11 @@ async function fetchTokocryptoData() {
   try {
 
     const response = await fetch(
-      "https://www.tokocrypto.com/open/v1/ticker/24hr"
+      "https://corsproxy.io/?https://www.tokocrypto.com/open/v1/ticker/24hr"
     );
 
     const json =
       await response.json();
-
-    console.log(
-      "TOKOCRYPTO RAW:",
-      json
-    );
 
     const list =
       json.data || [];
@@ -440,21 +428,6 @@ async function refreshDashboard() {
       fetchTokocryptoData(),
 
     ]);
-
-    console.log(
-      "REKU:",
-      rekuData
-    );
-
-    console.log(
-      "INDODAX:",
-      indodaxData
-    );
-
-    console.log(
-      "TOKOCRYPTO:",
-      tokocryptoData
-    );
 
     const merged =
       mergeMarketData(
