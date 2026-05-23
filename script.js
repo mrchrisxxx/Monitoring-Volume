@@ -94,8 +94,9 @@ async function fetchRekuData() {
 
     return data.map((coin) => ({
       asset: coin.cd,
-      reku: (coin.v || 0) / 1000000000,
+      reku: Number(coin.v || 0) / 1000,
     }));
+
   } catch (error) {
     console.error("Reku API Error:", error);
     return [];
@@ -112,11 +113,14 @@ async function fetchIndodaxData() {
 
     const tickers = data.tickers;
 
-    return Object.entries(tickers).map(([pair, value]) => ({
-      asset: pair.replace("_idr", "").toUpperCase(),
-      indodax:
-        Number(value.vol_idr || 0) / 1000000000,
-    }));
+    return Object.entries(tickers)
+      .filter(([pair]) => pair.endsWith("_idr"))
+      .map(([pair, value]) => ({
+        asset: pair.replace("_idr", "").toUpperCase(),
+        indodax:
+          Number(value.vol_idr || 0) / 1000000000,
+      }));
+
   } catch (error) {
     console.error("Indodax API Error:", error);
     return [];
@@ -126,20 +130,21 @@ async function fetchIndodaxData() {
 async function fetchTokocryptoData() {
   try {
     const response = await fetch(
-      "https://www.tokocrypto.com/open/v1/common/symbols"
+      "https://www.tokocrypto.com/open/v1/ticker/24hr"
     );
 
     const data = await response.json();
 
-    const symbols = data.data.list || [];
+    const list = data.data || [];
 
-    return symbols
-      .filter((item) => item.quoteAsset === "IDR")
+    return list
+      .filter((item) => item.symbol.endsWith("IDR"))
       .map((item) => ({
-        asset: item.baseAsset,
+        asset: item.symbol.replace("IDR", ""),
         tokocrypto:
-          Number(item.volume || 0) / 1000000000,
+          Number(item.quoteVolume || 0) / 1000000000,
       }));
+
   } catch (error) {
     console.error("Tokocrypto API Error:", error);
     return [];
@@ -148,11 +153,16 @@ async function fetchTokocryptoData() {
 
 function mergeMarketData(reku, indodax, tokocrypto) {
   return reku.map((rekuCoin) => {
+
     const indo =
-      indodax.find((i) => i.asset === rekuCoin.asset) || {};
+      indodax.find(
+        (i) => i.asset === rekuCoin.asset
+      ) || {};
 
     const toko =
-      tokocrypto.find((t) => t.asset === rekuCoin.asset) || {};
+      tokocrypto.find(
+        (t) => t.asset === rekuCoin.asset
+      ) || {};
 
     return {
       asset: rekuCoin.asset,
@@ -164,13 +174,18 @@ function mergeMarketData(reku, indodax, tokocrypto) {
 }
 
 function renderSummary(data) {
-  const total = data.reduce((sum, item) => sum + item.reku, 0);
+
+  const total = data.reduce(
+    (sum, item) => sum + item.reku,
+    0
+  );
 
   let increase = 0;
   let reduce = 0;
   let maintain = 0;
 
   data.forEach((item) => {
+
     const action = calculateAction(
       item.indodax,
       item.reku,
@@ -180,6 +195,7 @@ function renderSummary(data) {
     if (action === "Increase") increase++;
     if (action === "Reduce") reduce++;
     if (action === "Maintain") maintain++;
+
   });
 
   elements.summary.total.textContent =
@@ -196,12 +212,14 @@ function renderSummary(data) {
 }
 
 function renderTable(data) {
+
   const top10 = [...data]
     .sort((a, b) => b.reku - a.reku)
     .slice(0, 10);
 
   const rows = top10
     .map((item) => {
+
       const action = calculateAction(
         item.indodax,
         item.reku,
@@ -237,6 +255,7 @@ function renderTable(data) {
 }
 
 function renderRefreshTimes() {
+
   const now = formatTime();
 
   elements.refreshTimes.indodax.textContent = now;
@@ -245,6 +264,7 @@ function renderRefreshTimes() {
 }
 
 function updateCountdownVisual() {
+
   elements.countdown.textContent = countdown;
 
   const progressRatio =
@@ -255,15 +275,21 @@ function updateCountdownVisual() {
 }
 
 async function refreshDashboard() {
-  try {
-    elements.loadingState.textContent = "Updating";
 
-    const [reku, indodax, tokocrypto] =
-      await Promise.all([
-        fetchRekuData(),
-        fetchIndodaxData(),
-        fetchTokocryptoData(),
-      ]);
+  try {
+
+    elements.loadingState.textContent =
+      "Updating";
+
+    const [
+      reku,
+      indodax,
+      tokocrypto
+    ] = await Promise.all([
+      fetchRekuData(),
+      fetchIndodaxData(),
+      fetchTokocryptoData(),
+    ]);
 
     currentData = mergeMarketData(
       reku,
@@ -271,12 +297,19 @@ async function refreshDashboard() {
       tokocrypto
     );
 
-    renderTable(currentData);
-    renderSummary(currentData);
+    const top10 = [...currentData]
+      .sort((a, b) => b.reku - a.reku)
+      .slice(0, 10);
+
+    renderTable(top10);
+    renderSummary(top10);
     renderRefreshTimes();
 
-    elements.loadingState.textContent = "Live";
+    elements.loadingState.textContent =
+      "Live";
+
   } catch (error) {
+
     console.error(error);
 
     elements.loadingState.textContent =
@@ -285,19 +318,26 @@ async function refreshDashboard() {
 }
 
 function startAutoRefresh() {
+
   setInterval(() => {
+
     countdown--;
 
     if (countdown <= 0) {
-      countdown = REFRESH_INTERVAL_SECONDS;
+
+      countdown =
+        REFRESH_INTERVAL_SECONDS;
+
       refreshDashboard();
     }
 
     updateCountdownVisual();
+
   }, 1000);
 }
 
 async function initDashboard() {
+
   await refreshDashboard();
 
   updateCountdownVisual();
