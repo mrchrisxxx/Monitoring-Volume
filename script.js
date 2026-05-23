@@ -122,7 +122,7 @@ async function fetchRekuData() {
         // FIX FINAL
         reku:
           Number(coin.v || 0) /
-          1000000000,
+          1000000000000,
 
       }))
       .filter(
