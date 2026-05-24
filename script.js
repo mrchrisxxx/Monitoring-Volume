@@ -12,7 +12,7 @@ const INDODAX_API_URL =
   "https://indodax.com/api/tickers";
 
 const TOKOCRYPTO_API_URL =
-  "https://www.tokocrypto.site/api/v3/ticker/24hr";
+  "https://www.tokocrypto.com/open/v1/ticker/24hr";
 
 // =========================
 // GLOBAL STATE
@@ -33,7 +33,6 @@ const elements = {
   status: document.querySelector("#refresh-status"),
   sourceStatus: document.querySelector("#source-status"),
   manualRefresh: document.querySelector("#manual-refresh"),
-  tableCard: document.querySelector(".table-card"),
 
   lastRefresh: {
     indodax: document.querySelector("#last-refresh-indodax"),
@@ -54,39 +53,79 @@ const elements = {
 // =========================
 
 function formatVolume(value) {
-  return `${Number(value || 0).toFixed(2)} b`;
+
+  return `${Number(
+    value || 0
+  ).toFixed(2)} b`;
 }
 
 function formatTime(date = new Date()) {
-  return `${new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(date)} WIB`;
+
+  return `${new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "Asia/Jakarta",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }
+  ).format(date)} WIB`;
 }
 
-function setLoading(isLoading, message = "") {
-  elements.status.textContent =
-    isLoading ? "Updating" : "Live";
+function toBillions(value) {
 
-  elements.sourceStatus.textContent = message;
+  return (
+    Number(value || 0) /
+    1_000_000_000
+  );
+}
+
+function setLoading(
+  isLoading,
+  message = ""
+) {
+
+  elements.status.textContent =
+    isLoading
+      ? "Updating"
+      : "Live";
+
+  elements.sourceStatus.textContent =
+    message;
 
   elements.manualRefresh.disabled =
     isLoading;
 }
 
 function renderCountdown() {
-  elements.countdown.textContent = countdown;
+
+  elements.countdown.textContent =
+    countdown;
 
   elements.ring.style.strokeDashoffset =
     RING_CIRCUMFERENCE *
-    (1 - countdown / REFRESH_INTERVAL_SECONDS);
+    (1 -
+      countdown /
+        REFRESH_INTERVAL_SECONDS);
 }
 
-function toBillions(value) {
-  return Number(value || 0) / 1_000_000_000;
+function timeoutPromise(ms) {
+
+  return new Promise(
+    (_, reject) => {
+
+      setTimeout(() => {
+
+        reject(
+          new Error(
+            "Request timeout"
+          )
+        );
+
+      }, ms);
+    }
+  );
 }
 
 // =========================
@@ -98,6 +137,7 @@ function calculateAction(
   reku,
   tokocrypto
 ) {
+
   const x = Number(indodax || 0);
   const y = Number(tokocrypto || 0);
   const z = Number(reku || 0);
@@ -111,7 +151,8 @@ function calculateAction(
       (1 /
         (1 +
           Math.exp(
-            -0.015 * (d - 350)
+            -0.015 *
+              (d - 350)
           )));
 
   const alphaPos =
@@ -120,7 +161,8 @@ function calculateAction(
       1 /
         (1 +
           Math.exp(
-            -0.015 * (d - 350)
+            -0.015 *
+              (d - 350)
           )));
 
   const betaNeg =
@@ -128,14 +170,18 @@ function calculateAction(
     (1 -
       1 /
         (1 +
-          Math.exp(0.1 * (d + 150))));
+          Math.exp(
+            0.1 * (d + 150)
+          )));
 
   const alphaNeg =
     0.7 +
     (0.9 - 0.7) *
       (1 /
         (1 +
-          Math.exp(0.1 * (d + 150))));
+          Math.exp(
+            0.1 * (d + 150)
+          )));
 
   const upperPos =
     x - betaPos * absd;
@@ -150,6 +196,7 @@ function calculateAction(
     x + betaNeg * absd;
 
   if (d > 10) {
+
     if (z > upperPos)
       return "Reduce";
 
@@ -160,6 +207,7 @@ function calculateAction(
   }
 
   if (d <= -10) {
+
     if (z > upperNeg)
       return "Reduce";
 
@@ -179,55 +227,27 @@ function calculateAction(
 }
 
 // =========================
-// FETCH WITH SAFE FALLBACK
+// FETCH JSON WITH CORS PROXY
 // =========================
 
 async function fetchJson(url) {
 
-  // direct fetch
-  try {
+  const proxyUrl =
+    `https://corsproxy.io/?${encodeURIComponent(url)}`;
 
-    const response = await fetch(
-      `${url}?t=${Date.now()}`,
-      {
-        cache: "no-store",
-      }
+  const response =
+    await fetch(proxyUrl, {
+      cache: "no-store",
+    });
+
+  if (!response.ok) {
+
+    throw new Error(
+      `HTTP ${response.status}`
     );
-
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status}`
-      );
-    }
-
-    return response.json();
-
-  } catch (directError) {
-
-    console.warn(
-      "Direct fetch failed:",
-      url
-    );
-
-    // fallback via allorigins
-    const proxyUrl =
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-
-    const proxyResponse = await fetch(
-      proxyUrl,
-      {
-        cache: "no-store",
-      }
-    );
-
-    if (!proxyResponse.ok) {
-      throw new Error(
-        `Proxy failed ${proxyResponse.status}`
-      );
-    }
-
-    return proxyResponse.json();
   }
+
+  return response.json();
 }
 
 // =========================
@@ -236,9 +256,10 @@ async function fetchJson(url) {
 
 async function getRekuVolumes() {
 
-  const data = await fetchJson(
-    REKU_API_URL
-  );
+  const data =
+    await fetchJson(
+      REKU_API_URL
+    );
 
   return data
     .filter(
@@ -252,10 +273,13 @@ async function getRekuVolumes() {
         coin.cd.toUpperCase(),
 
       name:
-        coin.nm || coin.cd,
+        coin.nm ||
+        coin.cd,
 
       reku:
-        toBillions(coin.v),
+        toBillions(
+          coin.v
+        ),
     }))
     .sort(
       (a, b) =>
@@ -272,9 +296,10 @@ async function getIndodaxVolumes(
   assets
 ) {
 
-  const data = await fetchJson(
-    INDODAX_API_URL
-  );
+  const data =
+    await fetchJson(
+      INDODAX_API_URL
+    );
 
   const tickers =
     data?.tickers || {};
@@ -289,6 +314,7 @@ async function getIndodaxVolumes(
         ];
 
       return [
+
         asset,
 
         toBillions(
@@ -307,19 +333,20 @@ async function getTokocryptoVolumes(
   assets
 ) {
 
-  const data = await fetchJson(
-    TOKOCRYPTO_API_URL
-  );
+  const data =
+    await fetchJson(
+      TOKOCRYPTO_API_URL
+    );
 
   const rows =
-    Array.isArray(data)
-      ? data
-      : data?.value || [];
+    data?.data || [];
 
   const bySymbol =
     new Map(
       rows.map((item) => [
+
         item.symbol,
+
         item,
       ])
     );
@@ -334,6 +361,7 @@ async function getTokocryptoVolumes(
         );
 
       return [
+
         asset,
 
         toBillions(
@@ -355,6 +383,7 @@ function mergeRows(
 ) {
 
   return rekuRows.map((row) => ({
+
     ...row,
 
     indodax:
@@ -426,54 +455,57 @@ function renderSummary(rows) {
 function renderTable(rows) {
 
   elements.body.innerHTML =
-    rows
-      .map((row) => {
+    rows.map((row) => {
 
-        const action =
-          calculateAction(
-            row.indodax,
-            row.reku,
-            row.tokocrypto
-          );
+      const action =
+        calculateAction(
+          row.indodax,
+          row.reku,
+          row.tokocrypto
+        );
 
-        return `
-          <tr>
-            <td>
-              <span class="asset-cell">
-                <span class="asset-icon">
-                  ${row.asset.slice(0, 2)}
-                </span>
-                ${row.asset}
+      return `
+        <tr>
+
+          <td>
+            <span class="asset-cell">
+
+              <span class="asset-icon">
+                ${row.asset.slice(0, 2)}
               </span>
-            </td>
 
-            <td>
-              ${formatVolume(
-                row.indodax
-              )}
-            </td>
+              ${row.asset}
 
-            <td>
-              ${formatVolume(
-                row.reku
-              )}
-            </td>
+            </span>
+          </td>
 
-            <td>
-              ${formatVolume(
-                row.tokocrypto
-              )}
-            </td>
+          <td>
+            ${formatVolume(
+              row.indodax
+            )}
+          </td>
 
-            <td>
-              <span class="badge badge-${action.toLowerCase()}">
-                ${action}
-              </span>
-            </td>
-          </tr>
-        `;
-      })
-      .join("");
+          <td>
+            ${formatVolume(
+              row.reku
+            )}
+          </td>
+
+          <td>
+            ${formatVolume(
+              row.tokocrypto
+            )}
+          </td>
+
+          <td>
+            <span class="badge badge-${action.toLowerCase()}">
+              ${action}
+            </span>
+          </td>
+
+        </tr>
+      `;
+    }).join("");
 
   renderSummary(rows);
 }
@@ -484,38 +516,83 @@ function renderTable(rows) {
 
 async function refreshDashboard() {
 
+  setLoading(
+    true,
+    "Fetching live exchange data"
+  );
+
   try {
 
-    setLoading(
-      true,
-      "Fetching live exchange data"
-    );
+    // =====================
+    // REKU
+    // =====================
 
-    // REKU TOP 10
+    const rekuResult =
+      await Promise.race([
+
+        getRekuVolumes(),
+
+        timeoutPromise(8000),
+      ]);
+
     const rekuRows =
-      await getRekuVolumes();
+      Array.isArray(rekuResult)
+        ? rekuResult
+        : [];
 
     const assets =
       rekuRows.map(
         (row) => row.asset
       );
 
+    // =====================
     // OTHER EXCHANGES
+    // =====================
+
     const [
-      indodaxVolumes,
-      tokocryptoVolumes,
-    ] = await Promise.all([
+      indodaxResult,
+      tokocryptoResult,
+    ] = await Promise.allSettled([
 
-      getIndodaxVolumes(
-        assets
-      ),
+      Promise.race([
 
-      getTokocryptoVolumes(
-        assets
-      ),
+        getIndodaxVolumes(
+          assets
+        ),
+
+        timeoutPromise(8000),
+      ]),
+
+      Promise.race([
+
+        getTokocryptoVolumes(
+          assets
+        ),
+
+        timeoutPromise(8000),
+      ]),
     ]);
 
+    const indodaxVolumes =
+      indodaxResult.status ===
+      "fulfilled"
+
+        ? indodaxResult.value
+
+        : {};
+
+    const tokocryptoVolumes =
+      tokocryptoResult.status ===
+      "fulfilled"
+
+        ? tokocryptoResult.value
+
+        : {};
+
+    // =====================
     // MERGE
+    // =====================
+
     currentRows =
       mergeRows(
         rekuRows,
@@ -523,7 +600,10 @@ async function refreshDashboard() {
         tokocryptoVolumes
       );
 
+    // =====================
     // RENDER
+    // =====================
+
     renderTable(currentRows);
 
     const now =
@@ -549,7 +629,7 @@ async function refreshDashboard() {
 
     setLoading(
       false,
-      "Failed fetching live data"
+      "Some APIs failed"
     );
   }
 
