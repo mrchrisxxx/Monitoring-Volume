@@ -124,8 +124,85 @@ function timeoutPromise(ms) {
         );
 
       }, ms);
+
     }
   );
+}
+
+// =========================
+// MULTI PROXY FETCH
+// =========================
+
+async function fetchJson(url) {
+
+  const proxies = [
+
+    (u) =>
+      `https://corsproxy.io/?${encodeURIComponent(u)}`,
+
+    (u) =>
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+
+    (u) =>
+      `https://cors.isomorphic-git.org/${u}`,
+
+    (u) =>
+      `https://thingproxy.freeboard.io/fetch/${u}`,
+  ];
+
+  let lastError;
+
+  for (const proxy of proxies) {
+
+    try {
+
+      const finalUrl =
+        proxy(url);
+
+      console.log(
+        "Trying proxy:",
+        finalUrl
+      );
+
+      const response =
+        await Promise.race([
+
+          fetch(finalUrl, {
+            cache: "no-store",
+          }),
+
+          timeoutPromise(10000),
+        ]);
+
+      if (!response.ok) {
+
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      const data =
+        await response.json();
+
+      console.log(
+        "SUCCESS:",
+        finalUrl
+      );
+
+      return data;
+
+    } catch (error) {
+
+      console.warn(
+        "Proxy failed:",
+        error
+      );
+
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 }
 
 // =========================
@@ -227,30 +304,6 @@ function calculateAction(
 }
 
 // =========================
-// FETCH JSON WITH CORS PROXY
-// =========================
-
-async function fetchJson(url) {
-
-  const proxyUrl =
-    `https://corsproxy.io/?${encodeURIComponent(url)}`;
-
-  const response =
-    await fetch(proxyUrl, {
-      cache: "no-store",
-    });
-
-  if (!response.ok) {
-
-    throw new Error(
-      `HTTP ${response.status}`
-    );
-  }
-
-  return response.json();
-}
-
-// =========================
 // REKU
 // =========================
 
@@ -261,31 +314,39 @@ async function getRekuVolumes() {
       REKU_API_URL
     );
 
-  return data
-    .filter(
-      (coin) =>
-        coin.cd &&
-        Number(coin.v) > 0
-    )
-    .map((coin) => ({
+  const parsed =
+    data
+      .filter(
+        (coin) =>
+          coin.cd &&
+          Number(coin.v) > 0
+      )
+      .map((coin) => ({
 
-      asset:
-        coin.cd.toUpperCase(),
+        asset:
+          coin.cd.toUpperCase(),
 
-      name:
-        coin.nm ||
-        coin.cd,
+        name:
+          coin.nm ||
+          coin.cd,
 
-      reku:
-        toBillions(
-          coin.v
-        ),
-    }))
-    .sort(
-      (a, b) =>
-        b.reku - a.reku
-    )
-    .slice(0, 10);
+        reku:
+          toBillions(
+            coin.v
+          ),
+      }))
+      .sort(
+        (a, b) =>
+          b.reku - a.reku
+      )
+      .slice(0, 10);
+
+  console.log(
+    "REKU:",
+    parsed
+  );
+
+  return parsed;
 }
 
 // =========================
@@ -304,25 +365,33 @@ async function getIndodaxVolumes(
   const tickers =
     data?.tickers || {};
 
-  return Object.fromEntries(
+  const parsed =
+    Object.fromEntries(
 
-    assets.map((asset) => {
+      assets.map((asset) => {
 
-      const ticker =
-        tickers[
-          `${asset.toLowerCase()}_idr`
+        const ticker =
+          tickers[
+            `${asset.toLowerCase()}_idr`
+          ];
+
+        return [
+
+          asset,
+
+          toBillions(
+            ticker?.vol_idr
+          ),
         ];
+      })
+    );
 
-      return [
-
-        asset,
-
-        toBillions(
-          ticker?.vol_idr
-        ),
-      ];
-    })
+  console.log(
+    "INDODAX:",
+    parsed
   );
+
+  return parsed;
 }
 
 // =========================
@@ -351,25 +420,33 @@ async function getTokocryptoVolumes(
       ])
     );
 
-  return Object.fromEntries(
+  const parsed =
+    Object.fromEntries(
 
-    assets.map((asset) => {
+      assets.map((asset) => {
 
-      const ticker =
-        bySymbol.get(
-          `${asset}IDR`
-        );
+        const ticker =
+          bySymbol.get(
+            `${asset}IDR`
+          );
 
-      return [
+        return [
 
-        asset,
+          asset,
 
-        toBillions(
-          ticker?.quoteVolume
-        ),
-      ];
-    })
+          toBillions(
+            ticker?.quoteVolume
+          ),
+        ];
+      })
+    );
+
+  console.log(
+    "TOKOCRYPTO:",
+    parsed
   );
+
+  return parsed;
 }
 
 // =========================
@@ -532,7 +609,7 @@ async function refreshDashboard() {
 
         getRekuVolumes(),
 
-        timeoutPromise(8000),
+        timeoutPromise(10000),
       ]);
 
     const rekuRows =
@@ -560,7 +637,7 @@ async function refreshDashboard() {
           assets
         ),
 
-        timeoutPromise(8000),
+        timeoutPromise(10000),
       ]),
 
       Promise.race([
@@ -569,7 +646,7 @@ async function refreshDashboard() {
           assets
         ),
 
-        timeoutPromise(8000),
+        timeoutPromise(10000),
       ]),
     ]);
 
@@ -589,20 +666,12 @@ async function refreshDashboard() {
 
         : {};
 
-    // =====================
-    // MERGE
-    // =====================
-
     currentRows =
       mergeRows(
         rekuRows,
         indodaxVolumes,
         tokocryptoVolumes
       );
-
-    // =====================
-    // RENDER
-    // =====================
 
     renderTable(currentRows);
 
@@ -625,7 +694,10 @@ async function refreshDashboard() {
 
   } catch (error) {
 
-    console.error(error);
+    console.error(
+      "DASHBOARD ERROR:",
+      error
+    );
 
     setLoading(
       false,
