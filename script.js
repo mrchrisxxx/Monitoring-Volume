@@ -45,6 +45,10 @@ const elements = {
 };
 
 function calculateAction(indodax, reku, tokocrypto) {
+  if (indodax == null || reku == null || tokocrypto == null) {
+    return "Review";
+  }
+
   const x = indodax;
   const y = tokocrypto;
   const z = reku;
@@ -81,6 +85,10 @@ function calculateAction(indodax, reku, tokocrypto) {
 }
 
 function formatVolume(value) {
+  if (value == null || !Number.isFinite(Number(value))) {
+    return "N/A";
+  }
+
   return `${Number(value || 0).toFixed(2)} b`;
 }
 
@@ -227,9 +235,23 @@ async function getIndodaxVolumes(assets) {
 }
 
 async function getTokocryptoVolumes(assets) {
-  const data = await fetchJson(TOKOCRYPTO_TICKERS_URL);
-  const rows = Array.isArray(data) ? data : data?.value || [];
-  const bySymbol = new Map(rows.map((item) => [item.symbol, item]));
+  const rows = await Promise.all(
+    assets.map(async (asset) => {
+      try {
+        return await fetchJson(`${TOKOCRYPTO_TICKERS_URL}?symbol=${encodeURIComponent(`${asset}IDR`)}`);
+      } catch (error) {
+        return null;
+      }
+    })
+  );
+
+  const validRows = rows.filter(Boolean);
+
+  if (!validRows.length) {
+    throw new Error("Tokocrypto ticker requests failed for all Reku top assets");
+  }
+
+  const bySymbol = new Map(validRows.map((item) => [item.symbol, item]));
   const relevantTickers = assets.map((asset) => bySymbol.get(`${asset}IDR`)).filter(Boolean);
   const latestCloseTime = Math.max(...relevantTickers.map((item) => Number(item.closeTime || 0)));
 
@@ -238,7 +260,7 @@ async function getTokocryptoVolumes(assets) {
     volumes: Object.fromEntries(
       assets.map((asset) => {
         const ticker = bySymbol.get(`${asset}IDR`);
-        return [asset, toBillions(ticker?.quoteVolume)];
+        return [asset, ticker ? toBillions(ticker.quoteVolume) : null];
       })
     ),
   };

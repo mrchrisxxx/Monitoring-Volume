@@ -323,6 +323,12 @@ tbody tr:hover {
   border: 1px solid rgba(127, 170, 255, 0.3);
 }
 
+.badge-review {
+  color: var(--amber);
+  background: rgba(247, 198, 107, 0.14);
+  border: 1px solid rgba(247, 198, 107, 0.32);
+}
+
 .table-note {
   padding: 16px 22px;
   font-size: 0.86rem;

@@ -84,9 +84,23 @@ async function getIndodaxVolumes(assets) {
 }
 
 async function getTokocryptoVolumes(assets) {
-  const data = await fetchWithTimeout(TOKOCRYPTO_TICKERS_URL);
-  const rows = Array.isArray(data) ? data : data?.value || [];
-  const bySymbol = new Map(rows.map((item) => [item.symbol, item]));
+  const rows = await Promise.all(
+    assets.map(async (asset) => {
+      try {
+        return await fetchWithTimeout(`${TOKOCRYPTO_TICKERS_URL}?symbol=${encodeURIComponent(`${asset}IDR`)}`);
+      } catch (error) {
+        return null;
+      }
+    })
+  );
+
+  const validRows = rows.filter(Boolean);
+
+  if (!validRows.length) {
+    throw new Error("Tokocrypto ticker requests failed for all Reku top assets");
+  }
+
+  const bySymbol = new Map(validRows.map((item) => [item.symbol, item]));
   const relevantTickers = assets.map((asset) => bySymbol.get(`${asset}IDR`)).filter(Boolean);
   const latestCloseTime = Math.max(...relevantTickers.map((item) => Number(item.closeTime || 0)));
 
@@ -97,7 +111,7 @@ async function getTokocryptoVolumes(assets) {
     volumes: Object.fromEntries(
       assets.map((asset) => {
         const ticker = bySymbol.get(`${asset}IDR`);
-        return [asset, toBillions(ticker?.quoteVolume)];
+        return [asset, ticker ? toBillions(ticker.quoteVolume) : null];
       })
     ),
   };
@@ -106,8 +120,8 @@ async function getTokocryptoVolumes(assets) {
 function mergeRows(rekuRows, indodaxVolumes, tokocryptoVolumes) {
   return rekuRows.map(({ rekuRaw, ...row }) => ({
     ...row,
-    indodax: indodaxVolumes[row.asset] || 0,
-    tokocrypto: tokocryptoVolumes[row.asset] || 0,
+    indodax: indodaxVolumes[row.asset] ?? null,
+    tokocrypto: tokocryptoVolumes[row.asset] ?? null,
   }));
 }
 
