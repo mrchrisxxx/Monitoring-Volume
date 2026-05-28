@@ -1,6 +1,8 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+  "regions": ["sin1"],
+  "functionFailoverRegions": ["hnd1"],
   "headers": [
     {
       "source": "/(.*)",
@@ -21,4 +23,3 @@
     }
   ]
 }
-
