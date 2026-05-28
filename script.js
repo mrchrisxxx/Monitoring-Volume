@@ -274,6 +274,27 @@ function mergeRows(rekuRows, indodaxVolumes, tokocryptoVolumes) {
   }));
 }
 
+function hasMissingTokocrypto(rows) {
+  return rows.some((row) => row.tokocrypto == null);
+}
+
+function mergeTokocryptoFallback(rows, tokocryptoVolumes) {
+  return rows.map((row) => ({
+    ...row,
+    tokocrypto: tokocryptoVolumes[row.asset] ?? row.tokocrypto,
+  }));
+}
+
+async function tryBrowserTokocryptoFallback(rows) {
+  const assets = rows.map((row) => row.asset);
+  const result = await getTokocryptoVolumes(assets);
+
+  return {
+    rows: mergeTokocryptoFallback(rows, result.volumes),
+    refreshedAt: result.refreshedAt,
+  };
+}
+
 async function refreshDashboard() {
   setLoading(true, "Fetching exchange data");
 
@@ -289,9 +310,24 @@ async function refreshDashboard() {
         elements.lastRefresh.indodax.textContent = formatIsoTime(marketData.lastRefresh?.indodax);
         elements.lastRefresh.tokocrypto.textContent = formatIsoTime(marketData.lastRefresh?.tokocrypto);
 
+        if (hasMissingTokocrypto(currentRows)) {
+          setLoading(true, "Trying Tokocrypto browser fallback");
+
+          try {
+            const tokocryptoFallback = await tryBrowserTokocryptoFallback(currentRows);
+            currentRows = tokocryptoFallback.rows;
+            renderTable(currentRows);
+            elements.lastRefresh.tokocrypto.textContent = tokocryptoFallback.refreshedAt;
+          } catch (error) {
+            elements.lastRefresh.tokocrypto.textContent = "Unavailable";
+          }
+        }
+
         setLoading(
           false,
-          marketData.errors?.length
+          hasMissingTokocrypto(currentRows)
+            ? "Live data refreshed; Tokocrypto unavailable"
+            : marketData.errors?.length
             ? "Live data refreshed with partial exchange fallback"
             : "Live data refreshed through treasury API"
         );
