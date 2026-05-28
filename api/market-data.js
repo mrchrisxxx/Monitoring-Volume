@@ -1,6 +1,7 @@
 const REKU_MARKETS_URL = "https://reku.id/markets";
 const INDODAX_TICKERS_URL = "https://indodax.com/api/tickers";
 const TOKOCRYPTO_TICKERS_URL = "https://www.tokocrypto.site/api/v3/ticker/24hr";
+const TOKOCRYPTO_TRADE_PAGE_URL = "https://www.tokocrypto.com/en/trade/BTC_IDR";
 
 const REQUEST_TIMEOUT_MS = 12000;
 
@@ -95,23 +96,56 @@ async function getTokocryptoVolumes(assets) {
   );
 
   const validRows = rows.filter(Boolean);
-
-  if (!validRows.length) {
-    throw new Error("Tokocrypto ticker requests failed for all Reku top assets");
-  }
-
   const bySymbol = new Map(validRows.map((item) => [item.symbol, item]));
   const relevantTickers = assets.map((asset) => bySymbol.get(`${asset}IDR`)).filter(Boolean);
   const latestCloseTime = Math.max(...relevantTickers.map((item) => Number(item.closeTime || 0)));
+  const apiVolumes = Object.fromEntries(
+    assets.map((asset) => {
+      const ticker = bySymbol.get(`${asset}IDR`);
+      return [asset, ticker ? toBillions(ticker.quoteVolume) : null];
+    })
+  );
+  const missingAssets = assets.filter((asset) => apiVolumes[asset] == null);
+
+  if (missingAssets.length) {
+    const webFallback = await getTokocryptoWebFallbackVolumes(missingAssets);
+
+    for (const asset of missingAssets) {
+      apiVolumes[asset] = webFallback.volumes[asset] ?? apiVolumes[asset];
+    }
+  }
+
+  const hasAnyVolume = Object.values(apiVolumes).some((value) => value != null);
+
+  if (!hasAnyVolume) {
+    throw new Error("Tokocrypto volume unavailable from ticker API and trade page fallback");
+  }
 
   return {
     refreshedAt: latestCloseTime > 0
       ? new Date(latestCloseTime).toISOString()
       : nowIso(),
+    volumes: apiVolumes,
+  };
+}
+
+async function getTokocryptoWebFallbackVolumes(assets) {
+  const html = await fetchWithTimeout(TOKOCRYPTO_TRADE_PAGE_URL, "text");
+
+  return {
+    refreshedAt: nowIso(),
     volumes: Object.fromEntries(
       assets.map((asset) => {
-        const ticker = bySymbol.get(`${asset}IDR`);
-        return [asset, ticker ? toBillions(ticker.quoteVolume) : null];
+        const symbol = `${asset}IDR`;
+        const symbolPattern = new RegExp(`"${symbol}"\\s*:\\s*\\{([^{}]+)\\}`);
+        const symbolMatch = html.match(symbolPattern);
+
+        if (!symbolMatch) {
+          return [asset, null];
+        }
+
+        const quoteVolumeMatch = symbolMatch[1].match(/"quoteVolume"\s*:\s*"([^"]+)"/);
+        return [asset, quoteVolumeMatch ? toBillions(quoteVolumeMatch[1]) : null];
       })
     ),
   };
