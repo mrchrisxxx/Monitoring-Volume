@@ -48,6 +48,7 @@ async function getRekuTopRows() {
       .map((item) => ({
         asset: item.cd,
         name: item.n,
+        logo: item.logo || item.logo_svg || "",
         reku: toBillions(item.v),
         rekuRaw: Number(item.v),
       }))
@@ -124,12 +125,21 @@ async function getTokocryptoVolumes(assets) {
 }
 
 async function getTokocryptoProxyVolumes(assets) {
-  const url = `${TOKOCRYPTO_PROXY_URL.replace(/\/$/, "")}?assets=${encodeURIComponent(assets.join(","))}`;
-  const data = await fetchWithTimeout(url);
+  const url = new URL(TOKOCRYPTO_PROXY_URL);
+  url.searchParams.set("assets", assets.join(","));
+  const data = await fetchWithTimeout(url.toString());
+  const volumes = data?.volumes || {};
 
   return {
+    source: data?.source || "tokocrypto-proxy",
     refreshedAt: data?.generatedAt || nowIso(),
-    volumes: Object.fromEntries(assets.map((asset) => [asset, data?.volumes?.[asset] ?? null])),
+    volumes: Object.fromEntries(
+      assets.map((asset) => {
+        const value = volumes[asset] ?? volumes[asset.toUpperCase()] ?? null;
+        return [asset, value == null ? null : Number(value)];
+      })
+    ),
+    errors: data?.errors || [],
   };
 }
 
@@ -205,6 +215,7 @@ module.exports = async function handler(request, response) {
     response.status(200).json({
       source: "live",
       rekuSource: rekuResult.source,
+      tokocryptoSource: tokocrypto.source || (TOKOCRYPTO_PROXY_URL ? "tokocrypto-proxy" : "tokocrypto-direct"),
       generatedAt: nowIso(),
       lastRefresh: {
         reku: nowIso(),
@@ -212,7 +223,7 @@ module.exports = async function handler(request, response) {
         tokocrypto: tokocrypto.refreshedAt,
       },
       rows: mergeRows(rekuRows, indodax.volumes, tokocrypto.volumes),
-      errors,
+      errors: [...errors, ...(tokocrypto.errors || [])],
     });
   } catch (error) {
     response.status(502).json({

@@ -52,4 +52,4 @@ The dashboard frontend reads `/api/market-data` first. That endpoint is designed
 
 If `/api/market-data` is unavailable during local static preview, the browser attempts a direct fetch fallback. If a browser blocks a cross-origin request, the dashboard keeps the latest available snapshot instead of generating random mock values.
 
-Reku ranking is based on Reku market volume from the market page state, not the older `api.reku.id/v2/price` volume field.
+Reku ranking is based on `https://api.reku.id/v3/market`, not the older `api.reku.id/v2/price` volume field.
